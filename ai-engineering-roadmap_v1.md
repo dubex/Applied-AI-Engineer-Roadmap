@@ -22,76 +22,6 @@
 
 ---
 
-## Revision: model-agnostic, open-weights-first (audit and policy)
-
-**Verdict on v1.** The *concepts* in v1 (evals, RAG, context engineering, MCP, harnesses, LLMOps) were already model-agnostic. The *defaults and tooling* were not: many "start here" picks were Anthropic/OpenAI-authored, several tools were vendor-specific (Claude Code, Claude Agent SDK, vendor guides), and open-weights work (serving, fine-tuning) was an optional specialization rated "Should". For your stated preference that was backwards. What changed in this revision:
-
-1. Open-weights literacy, local runtimes, hardware sizing, quantization, chat-template/tool-call differences, provider abstraction and cross-model portability testing are now explicit **Must** topics (new domain O in the landscape table).
-2. Phase 1 starts on local open models; Phase 3 agents must run on at least three models; Phase 5 is now **core** open-weights engineering (fine-tune + quantize + serve); the capstone must run with an open-weights default and switch models by configuration only.
-3. New neutral/open resources were added and vendor-tied rows are labeled.
-
-### Vendor-tie audit of v1 resources
-
-| v1 resource family | Tie | Verdict | Neutral / open path |
-| --- | --- | --- | --- |
-| Anthropic posts: context engineering, building effective agents, agent evals, harnesses | Vendor-authored; examples use Claude, ideas are general | **Keep as concepts** | Pair with Applied LLMs, Hamel Husain, Eugene Yan, and the Hugging Face Agents Course (added) |
-| Claude Code best practices, Anthropic Academy skills/subagents/Claude Code courses | Tool-specific | **Optional**; learn the workflow ideas, not the product | Open-source coding agents that accept local models (Phase 0 row added) |
-| MCP spec, MCP Academy course, A2A | MCP/A2A are open protocols; one course is vendor-hosted | **Keep** | The spec and changelog are the neutral source |
-| Claude Agent SDK | Claude-oriented library | **Optional** | LangGraph, smolagents, LlamaIndex (Phase 3 row added) |
-| OpenAI Agents SDK | OpenAI-originated; its README describes multi-provider support | **Keep with a portability test** | Run it against a local open model before trusting it |
-| OpenAI/Anthropic prompt and function-calling guides | Vendor APIs | **Keep for concepts** | Local runtimes expose OpenAI-style tool calling, JSON mode and grammars (see portability rules) |
-| Contextual Retrieval (Anthropic) | Post uses Claude to write chunk context | **Keep; technique is general** | Use a local LLM for the context-generation step and compare |
-| Prompt caching examples | Vendor feature | **Keep; abstract it** | Self-hosted servers such as vLLM offer prefix caching |
-| Phase 5 as optional | Process flaw | **Fixed** | Now core |
-
-### Model tiers (use families as examples, not rankings)
-
-Open-model leaderboards change monthly and the roundups I found (dated 30 Oct to Nov 2026) **disagree with each other**, so the roadmap teaches a *selection method* rather than a winner. Names below are examples drawn from those roundups; sizes are approximate quantized footprints they report. Confirm on each model card.
-
-| Tier | Typical hardware | Example families named in recent roundups | Use it for |
-| --- | --- | --- | --- |
-| **L: laptop** | 16–24 GB RAM/VRAM | gpt-oss-20b (\~14 GB), Gemma 4 small/mid sizes, Qwen 3.5-class \~9B | Daily dev loops, unit evals, RAG, tool-calling basics |
-| **S: single GPU/workstation** | 24–80 GB | Qwen3.x-27B (\~18 GB), Gemma 4 31B, gpt-oss-120b (\~65 GB), Mistral Small 4 | Agent projects, fine-tuning targets, serving benchmarks |
-| **H: large open weights** | Multi-GPU cluster, or hosted via OpenRouter | DeepSeek V4/V4.1, Kimi K3, GLM-5.x, Qwen3.8 flagship, Mistral Large | Certifying agent behavior near frontier quality; usually reached through OpenRouter with a pinned provider |
-| **F: closed frontier "ceiling"** | API (via OpenRouter or direct) | One or two only | Reference quality, judge cross-checks, one "ceiling run" per project to separate harness bugs from model limits |
-
-Licenses differ (roundups report Apache 2.0, MIT and custom terms such as the Kimi K3 license, the Llama community license and Mistral's license). Read the license before you build on a model.
-
-### Where open weights can hurt learning, and the mitigation
-
-1. **Agent loops on small local models fail more often** (practitioner guides say so). That makes it hard to tell a harness bug from a model limit. *Mitigation:* build agent logic on Tier S/H, use Tier L for unit tests and non-agentic phases, and do one Tier F "ceiling run".
-2. **LLM-as-judge quality.** *Mitigation:* calibrate any judge against human labels, use the largest open model you can serve, cross-check with a closed judge sparingly, never let a model judge itself.
-3. **Coding agents.** Practitioner guides report frontier closed models still lead on complex multi-file work. *Mitigation:* use whichever coding tool maximizes your productivity, but keep every *learning project* model-agnostic.
-4. **No GPU.** Use rented GPUs or hosted open-weights endpoints; the code is identical behind an OpenAI-compatible API.
-5. **Distilling from closed models.** Check that model's terms of use before using its outputs as training data.
-6. **Exception log.** Any closed-model dependency is recorded with a reason and has a portability test.
-
-### Portability rules (the engineering contract for every project)
-
-1. **One `ModelClient` interface** speaking OpenAI-compatible HTTP (llama.cpp's `llama-server`, vLLM, Ollama and gateways such as LiteLLM all expose it), with an adapter layer for provider-specific features.
-2. **No model names in code.** Model IDs, endpoints and sampling parameters are configuration.
-3. **A `MODEL_CARD.md` per model you use:** license, context length, total vs active parameters, quantization, hardware, chat template, tool-call format, known quirks.
-4. **Evals are the portability test.** Run the full suite on at least 3 models from 2 families at each release; track task success, tool-call validity rate, latency and cost.
-5. **Prompts may vary per model family, but variants are versioned and measured.**
-6. **Structured outputs:** use schema or grammar-constrained decoding where the runtime supports it (llama.cpp's server accepts JSON schema/grammar), otherwise validate and retry.
-7. **Caching behind an abstraction** (vendor prompt caching vs self-hosted prefix caching).
-8. **Audit trail** of which model *and which provider endpoint* saw which data.
-
-### OpenRouter as the hosted leg (Tiers H and F)
-
-Your plan is to reach both open-weights and proprietary models through OpenRouter. That works well as the *hosted* leg of this roadmap: one OpenAI-style chat-completions API, one key, and easy cross-model comparison, which is exactly what the Phase 1 bake-off and the Phase 3 and 7 portability matrices need. Keep local runtimes (llama.cpp, Ollama, vLLM) for Tiers L/S, because a hosted router can't teach you hardware sizing, quantization, serving or air-gapped deployment, and you'll need those for Phase 5 and the FDE track. I haven't verified whether OpenRouter can host your own fine-tuned weights; assume you'll serve those yourself.
-
-What to know before you rely on it:
-
-1. **A model slug is a pool of providers, not one deployment.** By default OpenRouter load-balances across providers to maximize uptime. Providers can differ in advertised quantization, context window and tool-calling support, so the same slug can behave differently from one request to the next. That is fine for production availability and bad for reproducible evals.
-2. **Pin what you evaluate.** Use the `provider` object: `order`/`only`/`ignore` to choose endpoints, `quantizations` to filter precision, `require_parameters` so requests with tools or structured outputs only reach providers that support them (OpenRouter's docs recommend this for structured outputs), and `max_price` to cap spend. Disable fallbacks for eval runs. Docs: [provider routing](https://openrouter.ai/docs/guides/routing/provider-selection) (docs index: [openrouter.ai/docs/llms.txt](https://openrouter.ai/docs/llms.txt)).
-3. **Record the endpoint in every eval result:** model slug, provider, reported quantization, context length, date. Treat a provider change as a possible regression source ("provider drift") alongside prompt and model changes. Provider-declared quantization and capability metadata are claims, not guarantees, so spot-check tool-call validity yourself.
-4. **Privacy is a routing setting, not a default.** Use `zdr` (zero-data-retention endpoints only) and `data_collection: deny` for anything sensitive. The router is also an extra data processor, so read its privacy and provider-logging policy; OpenRouter's docs mention in-region (EU/US) routing for enterprise customers. Many FDE customers will forbid third-party gateways entirely, which is why the Phase 6 deployment pack needs a fully offline open-weights configuration.
-5. **Don't make the router your only exit path.** Keep your `ModelClient` adapter and a second route (a local server or a LiteLLM-style gateway) so you can switch if pricing, availability or terms change.
-6. **Cost tracking:** pass a stable user identifier where supported and log per-request cost yourself, so budgets and per-task cost don't depend on one dashboard.
-
----
-
 # 1. Topic landscape
 
 | Domain | Topic | What it is (and why it matters to you) | Priority |
@@ -720,3 +650,74 @@ A mechanical keyword scan confirmed every named item in your brief (including La
 3. **Out of scope on purpose:** pretraining/foundation-model research, RL research, robotics and world models, and deep domain specialties (healthcare, finance regulation). Add a domain-specific module if your job needs one.
 4. **Not testable by me:** whether each paid-platform item is included in your subscriptions, and whether you will have GPU access. The plan degrades gracefully to hosted open-weights endpoints.
 5. **Time realism:** with the electives and leadership deliverables the real calendar is longer than 37 weeks; the leadership deliverables are designed to be done *on top of* project work, not instead of it.
+
+---
+## Revision: model-agnostic, open-weights-first (audit and policy)
+
+**Verdict on v1.** The *concepts* in v1 (evals, RAG, context engineering, MCP, harnesses, LLMOps) were already model-agnostic. The *defaults and tooling* were not: many "start here" picks were Anthropic/OpenAI-authored, several tools were vendor-specific (Claude Code, Claude Agent SDK, vendor guides), and open-weights work (serving, fine-tuning) was an optional specialization rated "Should". For your stated preference that was backwards. What changed in this revision:
+
+1. Open-weights literacy, local runtimes, hardware sizing, quantization, chat-template/tool-call differences, provider abstraction and cross-model portability testing are now explicit **Must** topics (new domain O in the landscape table).
+2. Phase 1 starts on local open models; Phase 3 agents must run on at least three models; Phase 5 is now **core** open-weights engineering (fine-tune + quantize + serve); the capstone must run with an open-weights default and switch models by configuration only.
+3. New neutral/open resources were added and vendor-tied rows are labeled.
+
+### Vendor-tie audit of v1 resources
+
+| v1 resource family | Tie | Verdict | Neutral / open path |
+| --- | --- | --- | --- |
+| Anthropic posts: context engineering, building effective agents, agent evals, harnesses | Vendor-authored; examples use Claude, ideas are general | **Keep as concepts** | Pair with Applied LLMs, Hamel Husain, Eugene Yan, and the Hugging Face Agents Course (added) |
+| Claude Code best practices, Anthropic Academy skills/subagents/Claude Code courses | Tool-specific | **Optional**; learn the workflow ideas, not the product | Open-source coding agents that accept local models (Phase 0 row added) |
+| MCP spec, MCP Academy course, A2A | MCP/A2A are open protocols; one course is vendor-hosted | **Keep** | The spec and changelog are the neutral source |
+| Claude Agent SDK | Claude-oriented library | **Optional** | LangGraph, smolagents, LlamaIndex (Phase 3 row added) |
+| OpenAI Agents SDK | OpenAI-originated; its README describes multi-provider support | **Keep with a portability test** | Run it against a local open model before trusting it |
+| OpenAI/Anthropic prompt and function-calling guides | Vendor APIs | **Keep for concepts** | Local runtimes expose OpenAI-style tool calling, JSON mode and grammars (see portability rules) |
+| Contextual Retrieval (Anthropic) | Post uses Claude to write chunk context | **Keep; technique is general** | Use a local LLM for the context-generation step and compare |
+| Prompt caching examples | Vendor feature | **Keep; abstract it** | Self-hosted servers such as vLLM offer prefix caching |
+| Phase 5 as optional | Process flaw | **Fixed** | Now core |
+
+### Model tiers (use families as examples, not rankings)
+
+Open-model leaderboards change monthly and the roundups I found (dated 30 Oct to Nov 2026) **disagree with each other**, so the roadmap teaches a *selection method* rather than a winner. Names below are examples drawn from those roundups; sizes are approximate quantized footprints they report. Confirm on each model card.
+
+| Tier | Typical hardware | Example families named in recent roundups | Use it for |
+| --- | --- | --- | --- |
+| **L: laptop** | 16–24 GB RAM/VRAM | gpt-oss-20b (\~14 GB), Gemma 4 small/mid sizes, Qwen 3.5-class \~9B | Daily dev loops, unit evals, RAG, tool-calling basics |
+| **S: single GPU/workstation** | 24–80 GB | Qwen3.x-27B (\~18 GB), Gemma 4 31B, gpt-oss-120b (\~65 GB), Mistral Small 4 | Agent projects, fine-tuning targets, serving benchmarks |
+| **H: large open weights** | Multi-GPU cluster, or hosted via OpenRouter | DeepSeek V4/V4.1, Kimi K3, GLM-5.x, Qwen3.8 flagship, Mistral Large | Certifying agent behavior near frontier quality; usually reached through OpenRouter with a pinned provider |
+| **F: closed frontier "ceiling"** | API (via OpenRouter or direct) | One or two only | Reference quality, judge cross-checks, one "ceiling run" per project to separate harness bugs from model limits |
+
+Licenses differ (roundups report Apache 2.0, MIT and custom terms such as the Kimi K3 license, the Llama community license and Mistral's license). Read the license before you build on a model.
+
+### Where open weights can hurt learning, and the mitigation
+
+1. **Agent loops on small local models fail more often** (practitioner guides say so). That makes it hard to tell a harness bug from a model limit. *Mitigation:* build agent logic on Tier S/H, use Tier L for unit tests and non-agentic phases, and do one Tier F "ceiling run".
+2. **LLM-as-judge quality.** *Mitigation:* calibrate any judge against human labels, use the largest open model you can serve, cross-check with a closed judge sparingly, never let a model judge itself.
+3. **Coding agents.** Practitioner guides report frontier closed models still lead on complex multi-file work. *Mitigation:* use whichever coding tool maximizes your productivity, but keep every *learning project* model-agnostic.
+4. **No GPU.** Use rented GPUs or hosted open-weights endpoints; the code is identical behind an OpenAI-compatible API.
+5. **Distilling from closed models.** Check that model's terms of use before using its outputs as training data.
+6. **Exception log.** Any closed-model dependency is recorded with a reason and has a portability test.
+
+### Portability rules (the engineering contract for every project)
+
+1. **One `ModelClient` interface** speaking OpenAI-compatible HTTP (llama.cpp's `llama-server`, vLLM, Ollama and gateways such as LiteLLM all expose it), with an adapter layer for provider-specific features.
+2. **No model names in code.** Model IDs, endpoints and sampling parameters are configuration.
+3. **A `MODEL_CARD.md` per model you use:** license, context length, total vs active parameters, quantization, hardware, chat template, tool-call format, known quirks.
+4. **Evals are the portability test.** Run the full suite on at least 3 models from 2 families at each release; track task success, tool-call validity rate, latency and cost.
+5. **Prompts may vary per model family, but variants are versioned and measured.**
+6. **Structured outputs:** use schema or grammar-constrained decoding where the runtime supports it (llama.cpp's server accepts JSON schema/grammar), otherwise validate and retry.
+7. **Caching behind an abstraction** (vendor prompt caching vs self-hosted prefix caching).
+8. **Audit trail** of which model *and which provider endpoint* saw which data.
+
+### OpenRouter as the hosted leg (Tiers H and F)
+
+Your plan is to reach both open-weights and proprietary models through OpenRouter. That works well as the *hosted* leg of this roadmap: one OpenAI-style chat-completions API, one key, and easy cross-model comparison, which is exactly what the Phase 1 bake-off and the Phase 3 and 7 portability matrices need. Keep local runtimes (llama.cpp, Ollama, vLLM) for Tiers L/S, because a hosted router can't teach you hardware sizing, quantization, serving or air-gapped deployment, and you'll need those for Phase 5 and the FDE track. I haven't verified whether OpenRouter can host your own fine-tuned weights; assume you'll serve those yourself.
+
+What to know before you rely on it:
+
+1. **A model slug is a pool of providers, not one deployment.** By default OpenRouter load-balances across providers to maximize uptime. Providers can differ in advertised quantization, context window and tool-calling support, so the same slug can behave differently from one request to the next. That is fine for production availability and bad for reproducible evals.
+2. **Pin what you evaluate.** Use the `provider` object: `order`/`only`/`ignore` to choose endpoints, `quantizations` to filter precision, `require_parameters` so requests with tools or structured outputs only reach providers that support them (OpenRouter's docs recommend this for structured outputs), and `max_price` to cap spend. Disable fallbacks for eval runs. Docs: [provider routing](https://openrouter.ai/docs/guides/routing/provider-selection) (docs index: [openrouter.ai/docs/llms.txt](https://openrouter.ai/docs/llms.txt)).
+3. **Record the endpoint in every eval result:** model slug, provider, reported quantization, context length, date. Treat a provider change as a possible regression source ("provider drift") alongside prompt and model changes. Provider-declared quantization and capability metadata are claims, not guarantees, so spot-check tool-call validity yourself.
+4. **Privacy is a routing setting, not a default.** Use `zdr` (zero-data-retention endpoints only) and `data_collection: deny` for anything sensitive. The router is also an extra data processor, so read its privacy and provider-logging policy; OpenRouter's docs mention in-region (EU/US) routing for enterprise customers. Many FDE customers will forbid third-party gateways entirely, which is why the Phase 6 deployment pack needs a fully offline open-weights configuration.
+5. **Don't make the router your only exit path.** Keep your `ModelClient` adapter and a second route (a local server or a LiteLLM-style gateway) so you can switch if pricing, availability or terms change.
+6. **Cost tracking:** pass a stable user identifier where supported and log per-request cost yourself, so budgets and per-task cost don't depend on one dashboard.
+
+---
